@@ -29,9 +29,14 @@ const fieldStyle = { width: '100%', padding: '11px 12px', border: '1px solid #cb
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API}${path}`, {
     ...init,
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
   });
   const body = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    if (typeof window !== 'undefined') window.location.assign('/sign-in');
+    throw new Error('Sessão expirada. Entre novamente.');
+  }
   if (!response.ok) {
     const message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
     throw new Error(message || 'Não foi possível concluir a operação.');
@@ -89,6 +94,10 @@ export default function Home() {
     review: items.filter((item) => item.status === 'AGUARDANDO_REVISAO').length,
   }), [items]);
 
+  async function logout() {
+    try { await request('/auth/logout', { method: 'POST' }); } finally { window.location.assign('/sign-in'); }
+  }
+
   async function createProcess(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true); setError(''); setNotice('');
@@ -133,7 +142,7 @@ export default function Home() {
           <h1>SITRA <span>IA</span></h1>
           <p>Sistema Inteligente de Trânsito e Recursos Administrativos</p>
         </div>
-        <div className="header-tag">AMBIENTE DE DESENVOLVIMENTO</div>
+        <div className="header-actions"><div className="header-tag">AMBIENTE DE DESENVOLVIMENTO</div><button className="logout-button" type="button" onClick={logout}>Sair</button></div>
       </header>
 
       <section className="notice-banner">

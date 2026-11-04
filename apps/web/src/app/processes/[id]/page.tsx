@@ -29,8 +29,9 @@ export default function ProcessDetailPage() {
   async function load() {
     setLoading(true); setError('');
     try {
-      const response = await fetch(`${API}/processes/${params.id}`);
+      const response = await fetch(`${API}/processes/${params.id}`, { credentials: 'include' });
       const data = await response.json();
+      if (response.status === 401) { window.location.assign('/sign-in'); return; }
       if (!response.ok) throw new Error(data.message || 'Não foi possível localizar o processo.');
       setProcess(data);
     } catch (err) { setError(err instanceof Error ? err.message : 'Falha de comunicação com a API.'); }
@@ -44,9 +45,10 @@ export default function ProcessDetailPage() {
     setSaving(true); setError(''); setNotice('');
     try {
       const response = await fetch(`${API}/processes/${params.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }),
+        method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }),
       });
       const data = await response.json();
+      if (response.status === 401) { window.location.assign('/sign-in'); return; }
       if (!response.ok) throw new Error(data.message || 'Não foi possível atualizar a situação.');
       setProcess((current) => current ? { ...current, ...data } : data);
       setNextStatus(''); setNotice('Situação atualizada e registrada na trilha de auditoria.');
