@@ -1,4 +1,4 @@
-import { IsDateString, IsEnum, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, Length, MaxLength } from 'class-validator';
 import { ProcessType } from '@prisma/client';
 
 export class CreateProcessDto {
@@ -10,6 +10,7 @@ export class CreateProcessDto {
   type!: ProcessType;
 
   @IsString()
+  @IsNotEmpty()
   organizationId!: string;
 
   @IsString()
