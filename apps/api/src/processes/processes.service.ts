@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateProcessDto } from './dto/create-process.dto';
 import { UpdateProcessDto } from './dto/update-process.dto';
 
-const nextStatus: Record<ProcessStatus, ProcessStatus[]> = {
+function parseViolationDate(value?: string) {\n  if (!value) return undefined;\n  return new Date(value.length === 10 ? `${value}T12:00:00.000Z` : value);\n}\n\nconst nextStatus: Record<ProcessStatus, ProcessStatus[]> = {
   RECEBIDO: ['EM_TRIAGEM'],
   EM_TRIAGEM: ['EM_ANALISE'],
   EM_ANALISE: ['AGUARDANDO_REVISAO'],
@@ -27,7 +27,7 @@ export class ProcessesService {
             organizationId: dto.organizationId,
             applicantName: dto.applicantName.trim(),
             infractionNoticeNumber: dto.infractionNoticeNumber?.trim(),
-            violationDate: dto.violationDate ? new Date(dto.violationDate) : undefined,
+            violationDate: parseViolationDate(dto.violationDate),
             subject: dto.subject?.trim(),
           },
           include: { organization: { select: { id: true, name: true, code: true } } },
@@ -115,7 +115,7 @@ export class ProcessesService {
         data: {
           ...(dto.applicantName !== undefined ? { applicantName: dto.applicantName.trim() } : {}),
           ...(dto.infractionNoticeNumber !== undefined ? { infractionNoticeNumber: dto.infractionNoticeNumber.trim() } : {}),
-          ...(dto.violationDate !== undefined ? { violationDate: new Date(dto.violationDate) } : {}),
+          ...(dto.violationDate !== undefined ? { violationDate: parseViolationDate(dto.violationDate) } : {}),
           ...(dto.subject !== undefined ? { subject: dto.subject.trim() } : {}),
           ...(dto.status !== undefined ? { status: dto.status } : {}),
         },
