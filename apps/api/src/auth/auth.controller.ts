@@ -16,16 +16,20 @@ export class AuthController {
   @Post('login')
   async login(@Body() body: LoginDto, @Res() response: any) {
     const result = await this.auth.login(body.email, body.password);
-    const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
-    response.setHeader('Set-Cookie', `sitra_session=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800;${secure}`);
+    const secure = process.env.NODE_ENV === 'production' || process.env.SESSION_COOKIE_SECURE === 'true' ? ' Secure;' : '';
+    const sameSite = process.env.SESSION_COOKIE_SAME_SITE || 'Lax';
+    const domain = process.env.SESSION_COOKIE_DOMAIN ? ` Domain=${process.env.SESSION_COOKIE_DOMAIN};` : '';
+    response.setHeader('Set-Cookie', `sitra_session=${encodeURIComponent(result.token)}; Path=/; HttpOnly; SameSite=${sameSite};${domain} Max-Age=28800;${secure}`);
     return response.status(200).json({ user: result.user, expiresAt: result.expiresAt });
   }
   @Post('logout')
   async logout(@Req() request: RequestWithUser, @Res() response: any, @CurrentUser() user: AuthenticatedUser) {
     const token = request.headers.cookie?.split(';').map((part) => part.trim()).find((part) => part.startsWith('sitra_session='))?.slice('sitra_session='.length);
     if (token) await this.auth.revokeSession(decodeURIComponent(token));
-    const secure = process.env.NODE_ENV === 'production' ? ' Secure;' : '';
-    response.setHeader('Set-Cookie', `sitra_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0;${secure}`);
+    const secure = process.env.NODE_ENV === 'production' || process.env.SESSION_COOKIE_SECURE === 'true' ? ' Secure;' : '';
+    const sameSite = process.env.SESSION_COOKIE_SAME_SITE || 'Lax';
+    const domain = process.env.SESSION_COOKIE_DOMAIN ? ` Domain=${process.env.SESSION_COOKIE_DOMAIN};` : '';
+    response.setHeader('Set-Cookie', `sitra_session=; Path=/; HttpOnly; SameSite=${sameSite};${domain} Max-Age=0;${secure}`);
     return response.status(200).json({ success: true, userId: user.id });
   }
   @Get('me')

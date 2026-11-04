@@ -16,7 +16,7 @@ Plataforma de apoio à análise de defesas prévias e recursos administrativos d
 - Gestão de membros e perfis por gestores do respectivo órgão.
 - Auditoria de operações com identificação do usuário.
 - Proteção de origem para operações de escrita e limitação de tentativas de login.
-- Tela de login e redirecionamento de páginas sem sessão.
+- Tela de login; a API valida a sessão em cada requisição e a interface encaminha sessões expiradas ao login.
 - Criação do primeiro administrador por comando local, sem cadastro público privilegiado.
 
 Esta versão continua sendo um protótipo técnico. Não inserir documentos reais, CPF, dados pessoais ou informações processuais sigilosas. Não disponibilizar a API publicamente.
