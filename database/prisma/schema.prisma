@@ -38,7 +38,7 @@ enum ReviewStatus {
 model Organization {
   id        String    @id @default(cuid())
   name      String
-  code      String?   @unique
+  code      String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   processes Process[]
@@ -46,7 +46,7 @@ model Organization {
 
 model Process {
   id                    String        @id @default(cuid())
-  protocolNumber        String        @unique
+  protocolNumber        String
   type                  ProcessType
   status                ProcessStatus @default(RECEBIDO)
   organizationId        String
@@ -64,6 +64,7 @@ model Process {
   decisions             Decision[]
   auditLogs             AuditLog[]
 
+  @@unique([organizationId, protocolNumber])
   @@index([organizationId, status])
   @@index([receivedAt])
 }
