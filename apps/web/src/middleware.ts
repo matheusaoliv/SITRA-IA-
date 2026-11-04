@@ -7,7 +7,6 @@ export function middleware(request: NextRequest) {
     destination.searchParams.set('next', request.nextUrl.pathname);
     return NextResponse.redirect(destination);
   }
-  if (hasSessionCookie && isSignIn) return NextResponse.redirect(new URL('/', request.url));
   return NextResponse.next();
 }
 export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)'] };

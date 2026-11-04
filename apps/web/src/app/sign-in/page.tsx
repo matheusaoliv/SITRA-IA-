@@ -1,9 +1,7 @@
 'use client';
 import { FormEvent, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 const API = (process.env.NEXT_PUBLIC_SITRA_API_URL || 'http://localhost:3001/api/v1').replace(/\/$/, '');
 export default function SignInPage() {
-  const search = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,8 +18,8 @@ export default function SignInPage() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || 'Não foi possível entrar.');
-      const next = search.get('next');
-      window.location.assign(next && next.startsWith('/') ? next : '/');
+      const next = new URLSearchParams(window.location.search).get('next');
+      window.location.assign(next && next.startsWith('/') && !next.startsWith('//') ? next : '/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha de comunicação com o servidor.');
     } finally {

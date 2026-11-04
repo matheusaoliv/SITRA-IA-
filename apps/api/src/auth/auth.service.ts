@@ -90,7 +90,7 @@ export class AuthService {
   }
 
   private audit(actorId: string, action: string, entityId: string, metadata: object) {
-    return this.prisma.auditLog.create({ data: { actorId, action, entityType: 'User', entityId, metadata } });
+    return this.prisma.auditLog.create({ data: { actorId, action, entityType: 'User', entityId, metadata: metadata as import('@prisma/client').Prisma.InputJsonValue } });
   }
 
   private toUser(user: { id: string; email: string; name: string; isSystemAdmin: boolean; memberships: Array<{ organizationId: string; role: OrganizationRole }> }): AuthenticatedUser {
