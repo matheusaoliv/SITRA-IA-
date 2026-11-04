@@ -1,21 +1,22 @@
 import 'reflect-metadata';
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { Module, Controller, Get } from '@nestjs/common';
-
-@Controller('api/v1/health')
-class HealthController {
-  @Get()
-  getHealth() {
-    return { service: 'sitra-api', status: 'ok', decisionAuthority: 'human' };
-  }
-}
-
-@Module({ controllers: [HealthController] })
-class AppModule {}
+import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.enableCors();
+  app.setGlobalPrefix('api/v1');
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    forbidNonWhitelisted: true,
+    transform: true,
+  }));
+
+  const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim());
+  app.enableCors({ origin: allowedOrigins, credentials: true });
+
   await app.listen(process.env.API_PORT || 3001);
 }
 bootstrap();
