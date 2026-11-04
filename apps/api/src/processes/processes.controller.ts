@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { ProcessStatus } from '@prisma/client';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CreateProcessDto } from './dto/create-process.dto';
+import { ListProcessesQueryDto } from './dto/list-processes-query.dto';
 import { UpdateProcessDto } from './dto/update-process.dto';
 import { ProcessesService } from './processes.service';
 
@@ -14,20 +14,8 @@ export class ProcessesController {
   }
 
   @Get()
-  findAll(
-    @Query('organizationId') organizationId?: string,
-    @Query('status') status?: ProcessStatus,
-    @Query('search') search?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    return this.processes.findAll({
-      organizationId,
-      status,
-      search: search?.trim(),
-      page: page ? Number(page) : 1,
-      limit: limit ? Number(limit) : 20,
-    });
+  findAll(@Query() query: ListProcessesQueryDto) {
+    return this.processes.findAll(query);
   }
 
   @Get(':id')
