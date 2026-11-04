@@ -1,0 +1,82 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProcessType { DEFESA_PREVIA JARI CETRAN }
+enum ProcessStatus { RECEBIDO EM_TRIAGEM EM_ANALISE AGUARDANDO_REVISAO DECIDIDO ARQUIVADO }
+enum OpinionRecommendation { DEFERIR INDEFERIR DILIGENCIA INCONCLUSIVO }
+enum ReviewStatus { PENDENTE APROVADO AJUSTES_SOLICITADOS }
+
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  createdAt DateTime  @default(now())
+  processes Process[]
+}
+
+model Process {
+  id             String        @id @default(cuid())
+  protocolNumber String        @unique
+  type           ProcessType
+  status         ProcessStatus @default(RECEBIDO)
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  documents      Document[]
+  opinions       AiOpinion[]
+  reviews        HumanReview[]
+  decisions      Decision[]
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  processId   String
+  process     Process  @relation(fields: [processId], references: [id])
+  fileName    String
+  storageKey  String
+  sha256      String
+  mimeType    String
+  pageCount   Int?
+  uploadedAt  DateTime @default(now())
+}
+
+model AiOpinion {
+  id             String                 @id @default(cuid())
+  processId      String
+  process        Process                @relation(fields: [processId], references: [id])
+  recommendation OpinionRecommendation
+  summary        String
+  reasoning      Json
+  sources        Json
+  model          String?
+  createdAt      DateTime               @default(now())
+  reviews        HumanReview[]
+}
+
+model HumanReview {
+  id          String       @id @default(cuid())
+  processId   String
+  process     Process      @relation(fields: [processId], references: [id])
+  opinionId   String
+  opinion     AiOpinion    @relation(fields: [opinionId], references: [id])
+  status      ReviewStatus @default(PENDENTE)
+  reviewerId  String
+  notes       String?
+  createdAt   DateTime     @default(now())
+}
+
+model Decision {
+  id           String   @id @default(cuid())
+  processId    String
+  process      Process  @relation(fields: [processId], references: [id])
+  decidedBy    String
+  outcome      String
+  justification String
+  decidedAt    DateTime @default(now())
+}
