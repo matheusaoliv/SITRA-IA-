@@ -1,18 +1,15 @@
 generator client {
   provider = "prisma-client-js"
 }
-
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
 enum ProcessType {
   DEFESA_PREVIA
   JARI
   CETRAN
 }
-
 enum ProcessStatus {
   RECEBIDO
   EM_TRIAGEM
@@ -21,113 +18,147 @@ enum ProcessStatus {
   DECIDIDO
   ARQUIVADO
 }
-
 enum OpinionRecommendation {
   DEFERIR
   INDEFERIR
   DILIGENCIA
   INCONCLUSIVO
 }
-
 enum ReviewStatus {
   PENDENTE
   APROVADO
   AJUSTES_SOLICITADOS
 }
-
-model Organization {
-  id        String    @id @default(cuid())
-  name      String
-  code      String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  processes Process[]
+enum OrganizationRole {
+  GESTOR
+  PROTOCOLO
+  ANALISTA
+  AUTORIDADE_TRANSITO
+  MEMBRO_JARI
+  PRESIDENTE_JARI
+  AUDITOR
 }
-
+model User {
+  id String @id @default(cuid())
+  name String
+  email String @unique
+  passwordHash String
+  isSystemAdmin Boolean @default(false)
+  disabledAt DateTime?
+  lastLoginAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  memberships UserOrganization[]
+  sessions Session[]
+}
+model UserOrganization {
+  id String @id @default(cuid())
+  userId String
+  organizationId String
+  role OrganizationRole
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([userId, organizationId])
+  @@index([organizationId, role, active])
+}
+model Session {
+  id String @id @default(cuid())
+  userId String
+  tokenHash String @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+}
+model Organization {
+  id String @id @default(cuid())
+  name String
+  code String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  processes Process[]
+  memberships UserOrganization[]
+}
 model Process {
-  id                    String        @id @default(cuid())
-  protocolNumber        String
-  type                  ProcessType
-  status                ProcessStatus @default(RECEBIDO)
-  organizationId        String
-  organization          Organization  @relation(fields: [organizationId], references: [id])
-  applicantName         String
+  id String @id @default(cuid())
+  protocolNumber String
+  type ProcessType
+  status ProcessStatus @default(RECEBIDO)
+  organizationId String
+  organization Organization @relation(fields: [organizationId], references: [id])
+  applicantName String
   infractionNoticeNumber String?
-  violationDate         DateTime?
-  receivedAt            DateTime      @default(now())
-  subject               String?
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-  documents             Document[]
-  opinions              AiOpinion[]
-  reviews               HumanReview[]
-  decisions             Decision[]
-  auditLogs             AuditLog[]
-
+  violationDate DateTime?
+  receivedAt DateTime @default(now())
+  subject String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  documents Document[]
+  opinions AiOpinion[]
+  reviews HumanReview[]
+  decisions Decision[]
+  auditLogs AuditLog[]
   @@unique([organizationId, protocolNumber])
   @@index([organizationId, status])
   @@index([receivedAt])
 }
-
 model Document {
-  id         String   @id @default(cuid())
-  processId  String
-  process    Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
-  fileName   String
+  id String @id @default(cuid())
+  processId String
+  process Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+  fileName String
   storageKey String
-  sha256     String
-  mimeType   String
-  pageCount  Int?
+  sha256 String
+  mimeType String
+  pageCount Int?
   uploadedAt DateTime @default(now())
-
   @@index([processId])
 }
-
 model AiOpinion {
-  id             String                 @id @default(cuid())
-  processId      String
-  process        Process                @relation(fields: [processId], references: [id], onDelete: Cascade)
+  id String @id @default(cuid())
+  processId String
+  process Process @relation(fields: [processId], references: [id], onDelete: Cascade)
   recommendation OpinionRecommendation
-  summary        String
-  reasoning      Json
-  sources        Json
-  model          String?
-  createdAt      DateTime               @default(now())
-  reviews        HumanReview[]
+  summary String
+  reasoning Json
+  sources Json
+  model String?
+  createdAt DateTime @default(now())
+  reviews HumanReview[]
 }
-
 model HumanReview {
-  id         String       @id @default(cuid())
-  processId  String
-  process    Process      @relation(fields: [processId], references: [id], onDelete: Cascade)
-  opinionId  String
-  opinion    AiOpinion    @relation(fields: [opinionId], references: [id])
-  status     ReviewStatus @default(PENDENTE)
+  id String @id @default(cuid())
+  processId String
+  process Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+  opinionId String
+  opinion AiOpinion @relation(fields: [opinionId], references: [id])
+  status ReviewStatus @default(PENDENTE)
   reviewerId String
-  notes      String?
-  createdAt  DateTime     @default(now())
+  notes String?
+  createdAt DateTime @default(now())
 }
-
 model Decision {
-  id            String   @id @default(cuid())
-  processId     String
-  process       Process  @relation(fields: [processId], references: [id], onDelete: Cascade)
-  decidedBy     String
-  outcome       String
+  id String @id @default(cuid())
+  processId String
+  process Process @relation(fields: [processId], references: [id], onDelete: Cascade)
+  decidedBy String
+  outcome String
   justification String
-  decidedAt     DateTime @default(now())
+  decidedAt DateTime @default(now())
 }
-
 model AuditLog {
-  id         String   @id @default(cuid())
-  processId  String?
-  process    Process? @relation(fields: [processId], references: [id], onDelete: SetNull)
-  actorId    String?
-  action     String
+  id String @id @default(cuid())
+  processId String?
+  process Process? @relation(fields: [processId], references: [id], onDelete: SetNull)
+  actorId String?
+  action String
   entityType String
-  entityId   String
-  metadata   Json?
-  createdAt  DateTime @default(now())
-
+  entityId String
+  metadata Json?
+  createdAt DateTime @default(now())
   @@index([processId, createdAt])
+  @@index([actorId, createdAt])
 }
