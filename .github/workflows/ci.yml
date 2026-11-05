@@ -47,5 +47,8 @@ jobs:
       - name: Build API
         run: npm run build --workspace @sitra/api
 
+      - name: Authorization policy tests
+        run: node --test apps/api/dist/auth/authorization.policy.spec.js
+
       - name: Build web
         run: npm run build --workspace @sitra/web
