@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrganizationRole, Prisma, ProcessStatus } from '@prisma/client';
+import { Prisma, ProcessStatus } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/auth.types';
+import { canAccessOrganization, canCreateProcessInOrganization, canUpdateProcessInOrganization } from '../auth/authorization.policy';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProcessDto } from './dto/create-process.dto';
 import { UpdateProcessDto } from './dto/update-process.dto';
@@ -23,18 +24,14 @@ export class ProcessesService {
   constructor(private readonly prisma: PrismaService) {}
 
   private assertOrganizationAccess(organizationId: string, actor: AuthenticatedUser) {
-    if (actor.isSystemAdmin) return;
-    if (!actor.memberships.some((item) => item.organizationId === organizationId)) {
+    if (!canAccessOrganization(actor, organizationId)) {
       throw new NotFoundException('Processo não encontrado.');
     }
   }
 
   async create(dto: CreateProcessDto, actor: AuthenticatedUser) {
     this.assertOrganizationAccess(dto.organizationId, actor);
-    if (!actor.isSystemAdmin && !actor.memberships.some((item) =>
-      item.organizationId === dto.organizationId &&
-      [OrganizationRole.PROTOCOLO, OrganizationRole.GESTOR].includes(item.role),
-    )) {
+    if (!canCreateProcessInOrganization(actor, dto.organizationId)) {
       throw new ForbiddenException('Seu perfil não permite protocolar processos neste órgão.');
     }
     try {
@@ -124,10 +121,7 @@ export class ProcessesService {
     const current = await this.prisma.process.findUnique({ where: { id } });
     if (!current) throw new NotFoundException('Processo não encontrado.');
     this.assertOrganizationAccess(current.organizationId, actor);
-    if (!actor.isSystemAdmin && !actor.memberships.some((item) =>
-      item.organizationId === current.organizationId &&
-      [OrganizationRole.ANALISTA, OrganizationRole.GESTOR].includes(item.role),
-    )) {
+    if (!canUpdateProcessInOrganization(actor, current.organizationId)) {
       throw new ForbiddenException('Seu perfil não permite alterar este processo.');
     }
     if (dto.status && dto.status !== current.status) {
