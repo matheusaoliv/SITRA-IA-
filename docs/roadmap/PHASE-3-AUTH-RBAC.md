@@ -34,7 +34,7 @@
 
 1. Atualize as dependências com npm install.
 2. Gere o Prisma Client com npm run db:generate.
-3. Aplique o schema ao banco de desenvolvimento com npm run db:push.
+3. Aplique o schema ao banco de desenvolvimento com npm run db:deploy.
 4. Crie o administrador inicial definindo ADMIN_NAME, ADMIN_EMAIL e ADMIN_PASSWORD (mínimo 14 caracteres) e executando npm run admin:create.
 5. Inicie a API e a interface normalmente.
 
