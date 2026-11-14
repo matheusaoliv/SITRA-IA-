@@ -5,19 +5,14 @@ import { canAccessOrganization, canCreateProcessInOrganization, canUpdateProcess
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProcessDto } from './dto/create-process.dto';
 import { UpdateProcessDto } from './dto/update-process.dto';
+import { canTransition, NEXT_STATUS } from './process-status';
 
 function parseViolationDate(value?: string) {
   if (!value) return undefined;
   return new Date(value.length === 10 ? `${value}T12:00:00.000Z` : value);
 }
-const nextStatus: Record<ProcessStatus, ProcessStatus[]> = {
-  RECEBIDO: ['EM_TRIAGEM'],
-  EM_TRIAGEM: ['EM_ANALISE'],
-  EM_ANALISE: ['AGUARDANDO_REVISAO'],
-  AGUARDANDO_REVISAO: [],
-  DECIDIDO: [],
-  ARQUIVADO: [],
-};
+
+const organizationSummary = { select: { id: true, name: true, code: true } } as const;
 
 @Injectable()
 export class ProcessesService {
@@ -38,15 +33,15 @@ export class ProcessesService {
       return await this.prisma.$transaction(async (tx) => {
         const process = await tx.process.create({
           data: {
-            protocolNumber: dto.protocolNumber.trim(),
+            protocolNumber: dto.protocolNumber,
             type: dto.type,
             organizationId: dto.organizationId,
-            applicantName: dto.applicantName.trim(),
-            infractionNoticeNumber: dto.infractionNoticeNumber?.trim(),
+            applicantName: dto.applicantName,
+            infractionNoticeNumber: dto.infractionNoticeNumber || null,
             violationDate: parseViolationDate(dto.violationDate),
-            subject: dto.subject?.trim(),
+            subject: dto.subject || null,
           },
-          include: { organization: { select: { id: true, name: true, code: true } } },
+          include: { organization: organizationSummary },
         });
         await tx.auditLog.create({
           data: {
@@ -92,21 +87,24 @@ export class ProcessesService {
         { infractionNoticeNumber: { contains: filters.search, mode: 'insensitive' } },
       ] } : {}),
     };
-    const [items, total] = await this.prisma.$transaction([
+    const { status: _status, ...whereWithoutStatus } = where;
+    const [items, total, byStatus] = await this.prisma.$transaction([
       this.prisma.process.findMany({
         where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit,
-        include: { organization: { select: { id: true, name: true, code: true } } },
+        include: { organization: organizationSummary },
       }),
       this.prisma.process.count({ where }),
+      this.prisma.process.groupBy({ by: ['status'], where: whereWithoutStatus, orderBy: { status: 'asc' }, _count: { _all: true } }),
     ]);
-    return { items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+    const statusCounts = Object.fromEntries(byStatus.map((row) => [row.status, (row._count as { _all: number })._all]));
+    return { items, statusCounts, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
   }
 
   async findOne(id: string, actor: AuthenticatedUser) {
     const process = await this.prisma.process.findUnique({
       where: { id },
       include: {
-        organization: { select: { id: true, name: true, code: true } },
+        organization: organizationSummary,
         documents: { orderBy: { uploadedAt: 'desc' } },
         opinions: { orderBy: { createdAt: 'desc' }, include: { reviews: true } },
         decisions: { orderBy: { decidedAt: 'desc' } },
@@ -114,7 +112,8 @@ export class ProcessesService {
     });
     if (!process) throw new NotFoundException('Processo não encontrado.');
     this.assertOrganizationAccess(process.organizationId, actor);
-    return process;
+    const allowedTransitions = canUpdateProcessInOrganization(actor, process.organizationId) ? NEXT_STATUS[process.status] : [];
+    return { ...process, allowedTransitions };
   }
 
   async update(id: string, dto: UpdateProcessDto, actor: AuthenticatedUser) {
@@ -124,31 +123,39 @@ export class ProcessesService {
     if (!canUpdateProcessInOrganization(actor, current.organizationId)) {
       throw new ForbiddenException('Seu perfil não permite alterar este processo.');
     }
-    if (dto.status && dto.status !== current.status) {
+    const statusChanged = dto.status !== undefined && dto.status !== current.status;
+    if (statusChanged) {
       if (dto.status === 'DECIDIDO') throw new BadRequestException('A situação DECIDIDO só poderá ser atribuída pelo módulo de decisão humana.');
-      if (!nextStatus[current.status].includes(dto.status)) throw new BadRequestException(`Transição de ${current.status} para ${dto.status} não permitida.`);
+      if (!canTransition(current.status, dto.status!)) throw new BadRequestException(`Transição de ${current.status} para ${dto.status} não permitida.`);
     }
+
+    const data: Prisma.ProcessUpdateManyMutationInput = {};
+    if (dto.applicantName !== undefined) data.applicantName = dto.applicantName;
+    if (dto.infractionNoticeNumber !== undefined) data.infractionNoticeNumber = dto.infractionNoticeNumber || null;
+    if (dto.violationDate !== undefined) data.violationDate = parseViolationDate(dto.violationDate) ?? null;
+    if (dto.subject !== undefined) data.subject = dto.subject || null;
+    if (statusChanged) data.status = dto.status;
+
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    for (const [field, to] of Object.entries(data)) {
+      const from = current[field as keyof typeof current];
+      if (String(from ?? '') !== String(to ?? '')) changes[field] = { from, to };
+    }
+    if (!Object.keys(changes).length) return this.prisma.process.findUniqueOrThrow({ where: { id }, include: { organization: organizationSummary } });
+
     return this.prisma.$transaction(async (tx) => {
-      const process = await tx.process.update({
-        where: { id },
-        data: {
-          ...(dto.applicantName !== undefined ? { applicantName: dto.applicantName.trim() } : {}),
-          ...(dto.infractionNoticeNumber !== undefined ? { infractionNoticeNumber: dto.infractionNoticeNumber.trim() } : {}),
-          ...(dto.violationDate !== undefined ? { violationDate: parseViolationDate(dto.violationDate) } : {}),
-          ...(dto.subject !== undefined ? { subject: dto.subject.trim() } : {}),
-          ...(dto.status !== undefined ? { status: dto.status } : {}),
-        },
-        include: { organization: { select: { id: true, name: true, code: true } } },
-      });
+      // Conditional on the status we validated against: a concurrent change makes this match 0 rows.
+      const { count } = await tx.process.updateMany({ where: { id, status: current.status }, data });
+      if (count === 0) throw new ConflictException('O processo foi alterado por outra pessoa. Recarregue e tente novamente.');
       await tx.auditLog.create({
         data: {
           processId: id, actorId: actor.id,
-          action: dto.status && dto.status !== current.status ? 'PROCESS_STATUS_CHANGED' : 'PROCESS_UPDATED',
+          action: statusChanged ? 'PROCESS_STATUS_CHANGED' : 'PROCESS_UPDATED',
           entityType: 'Process', entityId: id,
-          metadata: { previousStatus: current.status, currentStatus: process.status },
+          metadata: JSON.parse(JSON.stringify({ changes })) as Prisma.InputJsonValue,
         },
       });
-      return process;
+      return tx.process.findUniqueOrThrow({ where: { id }, include: { organization: organizationSummary } });
     });
   }
 }

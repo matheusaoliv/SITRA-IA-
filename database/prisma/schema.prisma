@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 datasource db {
   provider = "postgresql"
@@ -76,7 +77,7 @@ model Session {
 model Organization {
   id String @id @default(cuid())
   name String
-  code String?
+  code String? @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   processes Process[]
@@ -103,7 +104,7 @@ model Process {
   auditLogs AuditLog[]
   @@unique([organizationId, protocolNumber])
   @@index([organizationId, status])
-  @@index([receivedAt])
+  @@index([createdAt])
 }
 model Document {
   id String @id @default(cuid())
@@ -128,6 +129,7 @@ model AiOpinion {
   model String?
   createdAt DateTime @default(now())
   reviews HumanReview[]
+  @@index([processId, createdAt])
 }
 model HumanReview {
   id String @id @default(cuid())
@@ -139,6 +141,8 @@ model HumanReview {
   reviewerId String
   notes String?
   createdAt DateTime @default(now())
+  @@index([processId])
+  @@index([opinionId])
 }
 model Decision {
   id String @id @default(cuid())
@@ -148,6 +152,7 @@ model Decision {
   outcome String
   justification String
   decidedAt DateTime @default(now())
+  @@index([processId, decidedAt])
 }
 model AuditLog {
   id String @id @default(cuid())

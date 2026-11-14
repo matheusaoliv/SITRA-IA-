@@ -4,7 +4,7 @@ import { IS_PUBLIC_KEY } from './auth.decorators';
 import { AuthService } from './auth.service';
 import { RequestWithUser } from './auth.types';
 
-function getCookie(header: string | undefined, name: string): string | null {
+export function getCookie(header: string | undefined, name: string): string | null {
   if (!header) return null;
   for (const part of header.split(';')) {
     const index = part.indexOf('=');

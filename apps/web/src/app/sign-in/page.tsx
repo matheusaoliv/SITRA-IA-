@@ -1,6 +1,6 @@
 'use client';
 import { FormEvent, useState } from 'react';
-const API = (process.env.NEXT_PUBLIC_SITRA_API_URL || 'http://localhost:3001/api/v1').replace(/\/$/, '');
+import { API } from '@/lib/api';
 export default function SignInPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

@@ -1,10 +1,11 @@
 import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
+import * as assert from 'node:assert/strict';
 import { OrganizationRole } from '@prisma/client';
 import {
   canAccessOrganization,
   canCreateProcessInOrganization,
   canUpdateProcessInOrganization,
+  canManageOrganization,
 } from './authorization.policy';
 import { AuthenticatedUser } from './auth.types';
 
@@ -62,5 +63,14 @@ describe('políticas de autorização por órgão', () => {
     assert.equal(canCreateProcessInOrganization(actor, 'org-b'), false);
     assert.equal(canUpdateProcessInOrganization(actor, 'org-a'), false);
     assert.equal(canUpdateProcessInOrganization(actor, 'org-b'), true);
+  });
+
+  it('administração de usuários só para gestor do próprio órgão', () => {
+    const actor = user([
+      { organizationId: 'org-a', role: OrganizationRole.GESTOR },
+      { organizationId: 'org-b', role: OrganizationRole.ANALISTA },
+    ]);
+    assert.equal(canManageOrganization(actor, 'org-a'), true);
+    assert.equal(canManageOrganization(actor, 'org-b'), false);
   });
 });

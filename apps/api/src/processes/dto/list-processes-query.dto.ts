@@ -1,4 +1,5 @@
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { Trim } from '../../common/trim.decorator';
 import { Type } from 'class-transformer';
 import { ProcessStatus } from '@prisma/client';
 
@@ -11,8 +12,10 @@ export class ListProcessesQueryDto {
   @IsEnum(ProcessStatus)
   status?: ProcessStatus;
 
+  @Trim()
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   search?: string;
 
   @IsOptional()

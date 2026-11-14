@@ -7,7 +7,7 @@ Plataforma de apoio à análise de defesas prévias e recursos administrativos d
 
 ## Estado atual
 
-**Fase 3 em desenvolvimento: autenticação e controle de acesso.** A branch `feature/auth-rbac` parte da Fase 2 e acrescenta:
+**Fase 3: autenticação e controle de acesso.** Sobre a gestão de processos da Fase 2, o sistema tem:
 - Login e logout com sessão opaca em cookie HttpOnly.
 - Senhas com Argon2id; token de sessão aleatório e armazenado somente como hash.
 - Sessão com validade de oito horas e revogação no logout.
@@ -35,18 +35,28 @@ Esta versão continua sendo um protótipo técnico. Não inserir documentos reai
 Requisitos: Node.js 22+, npm 10+ e Docker Desktop ou Docker Engine.
 
 1. Copie `.env.example` para `.env` na raiz.
-2. Instale dependências: `npm install`.
+2. Instale dependências: `npm ci`.
 3. Inicie PostgreSQL e Redis: `npm run db:up`.
-4. Gere o Prisma Client: `npm run db:generate`.
-5. Aplique o modelo ao banco de desenvolvimento: `npm run db:push`.
-6. Crie o administrador inicial com as variáveis temporárias `ADMIN_NAME`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` (mínimo de 14 caracteres): `npm run admin:create`.
-7. Remova a senha do ambiente e inicie a API: `npm run dev:api`.
-8. Em outro terminal, inicie a interface: `npm run dev:web`.
-9. Abra `http://localhost:3000/sign-in` e entre com a conta de administrador.
+4. Aplique as migrações: `npm run db:deploy` (para criar uma nova migração após alterar o schema: `npm run db:migrate`).
+5. Crie o administrador inicial com as variáveis temporárias `ADMIN_NAME`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` (mínimo de 14 caracteres): `npm run admin:create`.
+6. Inicie a API: `npm run dev:api`.
+7. Em outro terminal, inicie a interface: `npm run dev:web`.
+8. Abra `http://localhost:3000` e entre com a conta de administrador.
 
-A API fica em `http://localhost:3001/api/v1`. O endpoint de saúde é `/health`.
+A interface encaminha `/api/v1/*` para a API (`SITRA_API_ORIGIN`), então o navegador fala apenas com a própria origem e o cookie de sessão é sempre first-party. O endpoint de saúde (`/api/v1/health`) também verifica o banco.
 
-O administrador global pode cadastrar órgãos. Em seguida, deve criar ou vincular gestores em `POST /organizations/:organizationId/members`. Gestores administram usuários apenas do próprio órgão.
+Testes: `npm test` compila a API e executa os testes unitários. O CI aplica as migrações num PostgreSQL limpo, verifica se o `schema.prisma` está em sincronia com as migrações e compila API e interface.
+
+## Publicação (Vercel)
+
+São dois projetos no mesmo repositório:
+
+| Projeto | Diretório | Variáveis |
+|---|---|---|
+| API | `apps/api` (preset NestJS, build `npm run vercel-build`) | `DATABASE_URL` (e `DATABASE_URL_UNPOOLED`, se o provedor oferecer), `CORS_ORIGINS` = URL da interface |
+| Interface | `apps/web` (Next.js) | `SITRA_API_ORIGIN` = URL da API |
+
+O build da API aplica as migrações pendentes. Para criar o primeiro administrador em produção, defina `ADMIN_NAME`, `ADMIN_EMAIL` e `ADMIN_PASSWORD` no projeto da API, faça um novo deploy e **remova `ADMIN_PASSWORD` em seguida**.
 
 ## Perfis
 
@@ -75,7 +85,8 @@ O administrador global pode cadastrar órgãos. Em seguida, deve criar ou vincul
 - Recuperação de senha e verificação de e-mail dependem de integração de e-mail.
 - O limitador de requisições atual usa memória local; produção com múltiplas réplicas exige armazenamento compartilhado, como Redis.
 - A tela Next.js usa a presença do cookie apenas para redirecionamento; a API valida a sessão e as permissões em cada requisição.
-- Testes automatizados, compilação, execução com banco e revisão independente ainda estão pendentes.
+- Os testes automatizados cobrem as regras de autorização e o fluxo de situação; ainda faltam testes de integração automatizados da API e revisão de segurança independente.
+- Remoção de membros, desativação de usuários, MFA e recuperação de senha ainda não existem.
 - Não usar dados reais nem expor o serviço publicamente antes de MFA, testes, revisão de segurança e avaliação LGPD.
 - Prazos, competências e regras determinísticas deverão ser calculados por código testável, nunca exclusivamente por IA.
 

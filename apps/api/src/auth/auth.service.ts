@@ -1,11 +1,15 @@
-import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { OrganizationRole } from '@prisma/client';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { OrganizationRole, Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthenticatedUser } from './auth.types';
+import { canManageOrganization } from './authorization.policy';
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
+// Verified when the e-mail is unknown, so response time does not reveal which accounts exist.
+let dummyHash: Promise<string> | undefined;
+const getDummyHash = () => (dummyHash ??= argon2.hash(randomBytes(16).toString('hex'), { type: argon2.argon2id }));
 
 @Injectable()
 export class AuthService {
@@ -16,7 +20,8 @@ export class AuthService {
       where: { email: email.trim().toLowerCase() },
       include: { memberships: { where: { active: true }, select: { organizationId: true, role: true } } },
     });
-    if (!user || user.disabledAt || !(await argon2.verify(user.passwordHash, password))) {
+    const passwordOk = await argon2.verify(user?.passwordHash ?? (await getDummyHash()), password);
+    if (!user || user.disabledAt || !passwordOk) {
       throw new UnauthorizedException('E-mail ou senha inválidos.');
     }
     const token = randomBytes(32).toString('base64url');
@@ -53,11 +58,14 @@ export class AuthService {
     const email = input.email.trim().toLowerCase();
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
+      // Only a system admin may link an account that already exists: a manager of one
+      // organization must not learn names or e-mails registered under another.
+      if (!actor.isSystemAdmin) throw new ConflictException('Não foi possível cadastrar este e-mail. Solicite o vínculo ao administrador do sistema.');
       const link = await this.prisma.userOrganization.findUnique({ where: { userId_organizationId: { userId: existing.id, organizationId: input.organizationId } } });
-      if (link) throw new ForbiddenException('Este usuário já possui vínculo com o órgão informado.');
+      if (link) throw new ConflictException('Este usuário já possui vínculo com o órgão informado.');
       const membership = await this.prisma.userOrganization.create({ data: { userId: existing.id, organizationId: input.organizationId, role: input.role } });
       await this.audit(actor.id, 'USER_ORG_LINKED', membership.id, { organizationId: input.organizationId, role: input.role });
-      return { userId: existing.id, name: existing.name, email: existing.email, membership };
+      return { userId: existing.id, email: existing.email, membership };
     }
     const passwordHash = await argon2.hash(input.password, { type: argon2.argon2id });
     const created = await this.prisma.user.create({
@@ -79,18 +87,20 @@ export class AuthService {
   async updateMembershipRole(organizationId: string, userId: string, role: OrganizationRole, actor: AuthenticatedUser) {
     this.assertOrganizationManager(organizationId, actor);
     if (role === OrganizationRole.GESTOR && !actor.isSystemAdmin) throw new ForbiddenException('Somente o administrador do sistema pode atribuir o perfil Gestor.');
-    const membership = await this.prisma.userOrganization.update({ where: { userId_organizationId: { userId, organizationId } }, data: { role } });
+    const target = await this.prisma.userOrganization.findUnique({ where: { userId_organizationId: { userId, organizationId } } });
+    if (!target) throw new NotFoundException('Vínculo não encontrado.');
+    if (target.role === OrganizationRole.GESTOR && !actor.isSystemAdmin) throw new ForbiddenException('Somente o administrador do sistema pode alterar o perfil de um Gestor.');
+    const membership = await this.prisma.userOrganization.update({ where: { id: target.id }, data: { role } });
     await this.audit(actor.id, 'USER_ROLE_CHANGED', membership.id, { organizationId, userId, role });
     return membership;
   }
 
   private assertOrganizationManager(organizationId: string, actor: AuthenticatedUser) {
-    const membership = actor.memberships.find((item) => item.organizationId === organizationId);
-    if (!actor.isSystemAdmin && membership?.role !== OrganizationRole.GESTOR) throw new ForbiddenException('Você não possui permissão para administrar usuários deste órgão.');
+    if (!canManageOrganization(actor, organizationId)) throw new ForbiddenException('Você não possui permissão para administrar usuários deste órgão.');
   }
 
   private audit(actorId: string, action: string, entityId: string, metadata: object) {
-    return this.prisma.auditLog.create({ data: { actorId, action, entityType: 'User', entityId, metadata: metadata as import('@prisma/client').Prisma.InputJsonValue } });
+    return this.prisma.auditLog.create({ data: { actorId, action, entityType: 'User', entityId, metadata: metadata as Prisma.InputJsonValue } });
   }
 
   private toUser(user: { id: string; email: string; name: string; isSystemAdmin: boolean; memberships: Array<{ organizationId: string; role: OrganizationRole }> }): AuthenticatedUser {

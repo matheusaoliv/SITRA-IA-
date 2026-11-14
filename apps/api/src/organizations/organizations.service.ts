@@ -9,9 +9,11 @@ export class OrganizationsService {
   async create(dto: CreateOrganizationDto, actor: AuthenticatedUser) {
     if (!actor.isSystemAdmin) throw new ForbiddenException('Somente o administrador do sistema pode cadastrar órgãos.');
     try {
-      const organization = await this.prisma.organization.create({ data: { name: dto.name.trim(), code: dto.code?.toUpperCase() } });
-      await this.prisma.auditLog.create({ data: { actorId: actor.id, action: 'ORGANIZATION_CREATED', entityType: 'Organization', entityId: organization.id } });
-      return organization;
+      return await this.prisma.$transaction(async (tx) => {
+        const organization = await tx.organization.create({ data: { name: dto.name, code: dto.code?.toUpperCase() || null } });
+        await tx.auditLog.create({ data: { actorId: actor.id, action: 'ORGANIZATION_CREATED', entityType: 'Organization', entityId: organization.id } });
+        return organization;
+      });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Já existe um órgão cadastrado com este código.');
       throw error;

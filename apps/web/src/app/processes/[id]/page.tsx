@@ -1,7 +1,9 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { errorMessage, request, statusLabels, typeLabels } from '@/lib/api';
 
 type ProcessData = {
   id: string; protocolNumber: string; type: string; status: string; applicantName: string;
@@ -11,11 +13,11 @@ type ProcessData = {
   documents: Array<{ id: string; fileName: string; mimeType: string; uploadedAt: string }>;
   opinions: Array<{ id: string; recommendation: string; summary: string; createdAt: string }>;
   decisions: Array<{ id: string; outcome: string; justification: string; decidedAt: string }>;
+  allowedTransitions: string[];
 };
-const API = (process.env.NEXT_PUBLIC_SITRA_API_URL || 'http://localhost:3001/api/v1').replace(/\/$/, '');
-const statusLabels: Record<string, string> = { RECEBIDO: 'Recebido', EM_TRIAGEM: 'Em triagem', EM_ANALISE: 'Em análise', AGUARDANDO_REVISAO: 'Aguardando revisão', DECIDIDO: 'Decidido', ARQUIVADO: 'Arquivado' };
-const typeLabels: Record<string, string> = { DEFESA_PREVIA: 'Defesa prévia', JARI: 'Recurso à JARI', CETRAN: 'Recurso ao CETRAN' };
-const transitions: Record<string, string[]> = { RECEBIDO: ['EM_TRIAGEM'], EM_TRIAGEM: ['EM_ANALISE'], EM_ANALISE: ['AGUARDANDO_REVISAO'], AGUARDANDO_REVISAO: [], DECIDIDO: [], ARQUIVADO: [] };
+
+// Stored at 12:00 UTC so the calendar day is the same in every Brazilian time zone.
+const formatDay = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
 
 export default function ProcessDetailPage() {
   const params = useParams<{ id: string }>();
@@ -26,44 +28,36 @@ export default function ProcessDetailPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  async function load() {
-    setLoading(true); setError('');
+  const load = useCallback(async () => {
     try {
-      const response = await fetch(`${API}/processes/${params.id}`, { credentials: 'include' });
-      const data = await response.json();
-      if (response.status === 401) { window.location.assign('/sign-in'); return; }
-      if (!response.ok) throw new Error(data.message || 'Não foi possível localizar o processo.');
-      setProcess(data);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Falha de comunicação com a API.'); }
-    finally { setLoading(false); }
-  }
+      setProcess(await request<ProcessData>(`/processes/${params.id}`));
+    } catch (err) {
+      setError(errorMessage(err, 'Falha de comunicação com a API.'));
+    } finally { setLoading(false); }
+  }, [params.id]);
 
-  useEffect(() => { if (params.id) load(); }, [params.id]);
+  useEffect(() => { if (params.id) load(); }, [params.id, load]);
 
   async function changeStatus(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!nextStatus) return;
+    event.preventDefault();
+    if (!nextStatus) return;
     setSaving(true); setError(''); setNotice('');
     try {
-      const response = await fetch(`${API}/processes/${params.id}`, {
-        method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: nextStatus }),
-      });
-      const data = await response.json();
-      if (response.status === 401) { window.location.assign('/sign-in'); return; }
-      if (!response.ok) throw new Error(data.message || 'Não foi possível atualizar a situação.');
-      setProcess((current) => current ? { ...current, ...data } : data);
+      await request(`/processes/${params.id}`, { method: 'PATCH', body: JSON.stringify({ status: nextStatus }) });
+      await load();
       setNextStatus(''); setNotice('Situação atualizada e registrada na trilha de auditoria.');
-    } catch (err) { setError(err instanceof Error ? err.message : 'Falha ao atualizar situação.'); }
-    finally { setSaving(false); }
+    } catch (err) {
+      setError(errorMessage(err, 'Falha ao atualizar situação.'));
+    } finally { setSaving(false); }
   }
 
-  if (loading) return <main className="detail-shell"><p>Carregando processo...</p></main>;
-  if (!process) return <main className="detail-shell"><a className="back-link" href="/">← Voltar aos processos</a><div className="detail-card"><h1>Processo indisponível</h1><p>{error || 'Não foi possível carregar os dados.'}</p></div></main>;
+  if (loading) return <main className="detail-shell"><p aria-live="polite">Carregando processo...</p></main>;
+  if (!process) return <main className="detail-shell"><Link className="back-link" href="/">← Voltar aos processos</Link><div className="detail-card"><h1>Processo indisponível</h1><p>{error || 'Não foi possível carregar os dados.'}</p></div></main>;
 
-  const allowed = transitions[process.status] || [];
   return <main className="detail-shell">
-    <a className="back-link" href="/">← Voltar aos processos</a>
-    {error && <div className="alert alert-error">{error}</div>}
-    {notice && <div className="alert alert-success">{notice}</div>}
+    <Link className="back-link" href="/">← Voltar aos processos</Link>
+    {error && <div className="alert alert-error" role="alert">{error}</div>}
+    {notice && <div className="alert alert-success" role="status">{notice}</div>}
     <section className="detail-card">
       <div className="detail-title">
         <div><div className="eyebrow dark">FICHA DO PROCESSO</div><h1>{process.protocolNumber}</h1><p>{typeLabels[process.type] || process.type} · {process.organization.name}</p></div>
@@ -73,7 +67,7 @@ export default function ProcessDetailPage() {
         <div className="detail-field"><span>Requerente</span><strong>{process.applicantName}</strong></div>
         <div className="detail-field"><span>Órgão responsável</span><strong>{process.organization.name}{process.organization.code ? ` · ${process.organization.code}` : ''}</strong></div>
         <div className="detail-field"><span>Auto de infração</span><strong>{process.infractionNoticeNumber || 'Não informado'}</strong></div>
-        <div className="detail-field"><span>Data da infração</span><strong>{process.violationDate ? new Date(process.violationDate).toLocaleDateString('pt-BR') : 'Não informada'}</strong></div>
+        <div className="detail-field"><span>Data da infração</span><strong>{process.violationDate ? formatDay(process.violationDate) : 'Não informada'}</strong></div>
         <div className="detail-field"><span>Data de protocolo</span><strong>{new Date(process.receivedAt).toLocaleString('pt-BR')}</strong></div>
         <div className="detail-field"><span>Última atualização</span><strong>{new Date(process.updatedAt).toLocaleString('pt-BR')}</strong></div>
       </div>
@@ -82,13 +76,13 @@ export default function ProcessDetailPage() {
     <section className="detail-card">
       <h2 className="detail-section-title">Andamento administrativo</h2>
       <p style={{ color: '#627d98', fontSize: 13, lineHeight: 1.6 }}>As alterações de situação são limitadas ao fluxo previsto. A situação “Decidido” não pode ser atribuída por este módulo: dependerá do registro de decisão humana competente.</p>
-      {allowed.length > 0 ? <form className="status-update" onSubmit={changeStatus}>
+      {process.allowedTransitions.length > 0 ? <form className="status-update" onSubmit={changeStatus}>
         <select aria-label="Próxima situação" value={nextStatus} onChange={(e) => setNextStatus(e.target.value)}>
           <option value="">Selecione a próxima etapa</option>
-          {allowed.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}
+          {process.allowedTransitions.map((status) => <option key={status} value={status}>{statusLabels[status] ?? status}</option>)}
         </select>
-        <button className="primary-button" disabled={!nextStatus || saving}>{saving ? 'Atualizando...' : 'Atualizar andamento'}</button>
-      </form> : <div className="empty-state">Não há transição disponível nesta etapa.</div>}
+        <button className="primary-button" type="submit" disabled={!nextStatus || saving}>{saving ? 'Atualizando...' : 'Atualizar andamento'}</button>
+      </form> : <div className="empty-state">Não há transição disponível para o seu perfil nesta etapa.</div>}
     </section>
 
     <section className="detail-card">

@@ -1,17 +1,21 @@
 {
   "name": "sitra-ia",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Sistema Inteligente de Trânsito e Recursos Administrativos",
   "workspaces": ["apps/web", "apps/api"],
+  "engines": { "node": ">=22" },
   "scripts": {
     "dev": "npm run dev --workspace apps/web",
     "dev:web": "npm run dev --workspace apps/web",
     "dev:api": "npm run start:dev --workspace apps/api",
+    "build": "npm run build --workspace @sitra/api && npm run build --workspace @sitra/web",
+    "test": "npm run build --workspace @sitra/api && node --test \"apps/api/dist/**/*.spec.js\"",
     "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker/docker-compose.yml down",
     "db:generate": "prisma generate --schema database/prisma/schema.prisma",
-    "db:push": "prisma db push --schema database/prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema database/prisma/schema.prisma",
+    "db:deploy": "prisma migrate deploy --schema database/prisma/schema.prisma",
     "db:studio": "prisma studio --schema database/prisma/schema.prisma",
     "admin:create": "tsx scripts/create-admin.ts"
   },

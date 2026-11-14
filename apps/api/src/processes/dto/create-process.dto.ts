@@ -1,7 +1,9 @@
 import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, Length, MaxLength } from 'class-validator';
 import { ProcessType } from '@prisma/client';
+import { Trim } from '../../common/trim.decorator';
 
 export class CreateProcessDto {
+  @Trim()
   @IsString()
   @Length(3, 60)
   protocolNumber!: string;
@@ -13,10 +15,12 @@ export class CreateProcessDto {
   @IsNotEmpty()
   organizationId!: string;
 
+  @Trim()
   @IsString()
   @Length(3, 180)
   applicantName!: string;
 
+  @Trim()
   @IsOptional()
   @IsString()
   @MaxLength(80)
@@ -26,6 +30,7 @@ export class CreateProcessDto {
   @IsDateString()
   violationDate?: string;
 
+  @Trim()
   @IsOptional()
   @IsString()
   @MaxLength(2000)

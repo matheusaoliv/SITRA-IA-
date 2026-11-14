@@ -2,53 +2,47 @@ name: SITRA IA CI
 
 on:
   push:
-    branches:
-      - main
-      - feature/process-management
-      - feature/auth-rbac
+    branches: [main]
   pull_request:
-    branches:
-      - main
-      - feature/process-management
-      - feature/auth-rbac
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: sitra-ci-${{ github.workflow }}-${{ github.ref }}
+  group: sitra-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sitra
+          POSTGRES_PASSWORD: sitra_ci_password
+          POSTGRES_DB: sitra_ia
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sitra" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://sitra:sitra_ci_password@localhost:5432/sitra_ia?schema=public
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-
+          cache: npm
+      - run: npm ci --no-audit --no-fund
       - name: Validate Prisma schema
         run: npx prisma validate --schema database/prisma/schema.prisma
-
-      - name: Generate Prisma Client
-        run: npm run db:generate
-
-      - name: Build API
-        run: npm run build --workspace @sitra/api
-
-      - name: Authorization policy tests
-        run: node --test apps/api/dist/auth/authorization.policy.spec.js
-
+      - name: Apply migrations to a clean database
+        run: npm run db:deploy
+      - name: Fail if schema.prisma drifted from the migrations
+        run: npx prisma migrate diff --from-migrations database/prisma/migrations --to-schema-datamodel database/prisma/schema.prisma --shadow-database-url "postgresql://sitra:sitra_ci_password@localhost:5432/postgres" --exit-code
+      - name: Build API and run unit tests
+        run: npm test
       - name: Build web
         run: npm run build --workspace @sitra/web
